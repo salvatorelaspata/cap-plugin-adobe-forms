@@ -1,0 +1,68 @@
+{
+  "name": "@salvatorela/cap-plugin-adobe-forms",
+  "version": "1.1.1",
+  "description": "Reusable SAP CAP plugin that wraps SAP Forms service by Adobe on SAP BTP",
+  "main": "cds-plugin.js",
+  "files": [
+    "cds-plugin.js",
+    "srv",
+    "lib",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "keywords": [
+    "sap",
+    "cap",
+    "cds-plugin",
+    "btp",
+    "adobe-forms",
+    "destination-service",
+    "sap-cloud-sdk"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/salvatorela/cap-plugin-adobe-forms.git"
+  },
+  "homepage": "https://github.com/salvatorela/cap-plugin-adobe-forms#readme",
+  "bugs": {
+    "url": "https://github.com/salvatorela/cap-plugin-adobe-forms/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@sap/cds": "^9.1.0",
+    "@sap-cloud-sdk/connectivity": "^4.0.0",
+    "@sap-cloud-sdk/http-client": "^4.0.0"
+  },
+  "peerDependencies": {
+    "@sap/cds": "^9.1.0"
+  },
+  "cds": {
+    "requires": {
+      "AdobeFormsService": {
+        "impl": "cap-plugin-adobe-forms/lib/adobe-service.js"
+      },
+      "adobeForms": {
+        "kind": "rest",
+        "destination": "ADOBE_FORMS_API",
+        "credentials": {
+          "baseUrl": "",
+          "tokenUrl": "",
+          "clientId": "",
+          "clientSecret": ""
+        }
+      }
+    }
+  },
+  "scripts": {
+    "start": "cds-serve",
+    "test": "node --test",
+    "pack:check": "npm pack --dry-run"
+  }
+}
