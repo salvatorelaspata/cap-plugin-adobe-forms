@@ -23,11 +23,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/salvatorela/cap-plugin-adobe-forms.git"
+    "url": "git+https://github.com/salvatorelaspata/cap-plugin-adobe-forms.git"
   },
-  "homepage": "https://github.com/salvatorela/cap-plugin-adobe-forms#readme",
+  "homepage": "https://github.com/salvatorelaspata/cap-plugin-adobe-forms#readme",
   "bugs": {
-    "url": "https://github.com/salvatorela/cap-plugin-adobe-forms/issues"
+    "url": "https://github.com/salvatorelaspata/cap-plugin-adobe-forms/issues"
   },
   "publishConfig": {
     "access": "public"
