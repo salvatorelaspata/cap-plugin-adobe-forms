@@ -35,7 +35,6 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@sap/cds": "^9.1.0",
     "@sap-cloud-sdk/connectivity": "^4.0.0",
     "@sap-cloud-sdk/http-client": "^4.0.0"
   },
