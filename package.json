@@ -1,11 +1,10 @@
 {
   "name": "@salvatorela/cap-plugin-adobe-forms",
-  "version": "1.1.1",
+  "version": "0.0.1",
   "description": "Reusable SAP CAP plugin that wraps SAP Forms service by Adobe on SAP BTP",
   "main": "cds-plugin.js",
   "files": [
     "cds-plugin.js",
-    "srv",
     "lib",
     "README.md",
     "LICENSE",
@@ -45,9 +44,6 @@
   },
   "cds": {
     "requires": {
-      "AdobeFormsService": {
-        "impl": "cap-plugin-adobe-forms/lib/adobe-service.js"
-      },
       "adobeForms": {
         "kind": "rest",
         "destination": "ADOBE_FORMS_API",
@@ -63,6 +59,7 @@
   "scripts": {
     "start": "cds-serve",
     "test": "node --test",
-    "pack:check": "npm pack --dry-run"
+    "pack:check": "npm pack --dry-run",
+    "publish": "npm publish --access public"
   }
 }
