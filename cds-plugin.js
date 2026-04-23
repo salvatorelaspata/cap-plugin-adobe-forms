@@ -5,7 +5,7 @@ const cds = require('@sap/cds')
 cds.on('bootstrap', () => {
   const requires = cds.env.requires
   if (requires?.adobeForms) {
-    requires.adobeForms.impl ??= require.resolve('./lib/adobe-service')
+    requires.adobeForms.impl = require.resolve('./lib/adobe-service')
   }
 })
 
