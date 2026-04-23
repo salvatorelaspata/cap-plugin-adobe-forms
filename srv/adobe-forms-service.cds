@@ -25,8 +25,9 @@ service AdobeFormsService {
     locale       : String(10)
   ) returns LargeBinary;
 
-  action listForms()                          returns LargeString;
-  action getFormDetails(formId : String(255)) returns LargeString;
+  action listForms()                            returns LargeString;
+  action getFormDetails(formId : String(255))   returns LargeString;
+  action getFormSchema(formId  : String(255))   returns LargeString;
 
   action health()       returns HealthStatus;
   action remoteHealth() returns RemoteHealthStatus;

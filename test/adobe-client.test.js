@@ -26,9 +26,9 @@ const MOCK_FORMS_LIST = [
 ]
 
 const MOCK_FORM_DETAILS = {
-  id: 'DELIBERA',
-  description: 'Delibera comunale',
-  schema: { Header: { NumeroDelibera: 'string', Anno: 'integer', Data: 'date' } }
+  formName: 'DELIBERA',
+  templates: [{ xdpTemplate: 'mock-base64-xdp-content' }],
+  schema: { xsdSchema: 'mock-base64-xsd' }
 }
 
 const MOCK_PDF = Buffer.from('%PDF-1.7 mock-pdf-content')
@@ -173,60 +173,155 @@ describe('getFormDetails', () => {
 
 // ─── renderPDF ────────────────────────────────────────────────────────────────
 
+// L'API adsRender/pdf risponde con JSON contenente il PDF come base64 nel campo fileContent
+const MOCK_PDF_RESPONSE = () => ok.json({ fileContent: MOCK_PDF.toString('base64') })
+
+/** Stub che risponde con i dettagli del form per GET /v1/forms/* e con il PDF JSON per POST /v1/adsRender/pdf */
+function stubRender(pdfResponse = MOCK_PDF_RESPONSE) {
+  return stubFetch((url) =>
+    String(url).includes('/v1/forms/') ? ok.json(MOCK_FORM_DETAILS) : pdfResponse(url)
+  )
+}
+
+function renderCall() {
+  return apiCalls().find(c => String(c.arguments[0]).includes('adsRender'))
+}
+
 describe('renderPDF', () => {
   it('ritorna un Buffer in caso di successo', async () => {
-    stubFetch(() => ok.binary(MOCK_PDF))
+    stubRender()
     const result = await client.renderPDF({ templateName: 'DELIBERA', payload: SAMPLE_PAYLOAD, locale: 'it' })
     assert.ok(Buffer.isBuffer(result))
     assert.deepEqual(result, MOCK_PDF)
   })
 
-  it('chiama POST /v1/forms/{templateName}/render', async () => {
-    stubFetch(() => ok.binary(MOCK_PDF))
+  it('chiama POST /v1/adsRender/pdf', async () => {
+    stubRender()
     await client.renderPDF({ templateName: 'DELIBERA', payload: SAMPLE_PAYLOAD })
-    const call = apiCalls()[0]
-    assert.equal(call.arguments[0], 'https://mock-adobe.local/v1/forms/DELIBERA/render')
+    const call = renderCall()
+    assert.equal(call.arguments[0], 'https://mock-adobe.local/v1/adsRender/pdf')
     assert.equal(call.arguments[1].method, 'POST')
   })
 
-  it('applica URL-encoding ai caratteri speciali nel templateName', async () => {
-    stubFetch(() => ok.binary(MOCK_PDF))
+  it('recupera il form con URL-encoding del templateName', async () => {
+    stubRender()
     await client.renderPDF({ templateName: 'MY FORM', payload: SAMPLE_PAYLOAD })
-    assert.equal(apiCalls()[0].arguments[0], 'https://mock-adobe.local/v1/forms/MY%20FORM/render')
+    const formCall = apiCalls().find(c => String(c.arguments[0]).includes('/v1/forms/'))
+    assert.equal(formCall.arguments[0], 'https://mock-adobe.local/v1/forms/MY%20FORM')
   })
 
-  it('invia Content-Type application/json e Accept application/pdf', async () => {
-    stubFetch(() => ok.binary(MOCK_PDF))
+  it('invia Content-Type application/json e Accept application/json', async () => {
+    stubRender()
     await client.renderPDF({ templateName: 'DELIBERA', payload: SAMPLE_PAYLOAD, locale: 'it' })
-    const { headers } = apiCalls()[0].arguments[1]
-    assert.equal(headers['Content-Type'],   'application/json')
-    assert.equal(headers['Accept'],         'application/pdf')
-    assert.equal(headers['Accept-Language'], 'it')
+    const { headers } = renderCall().arguments[1]
+    assert.equal(headers['Content-Type'], 'application/json')
+    assert.equal(headers['Accept'],       'application/json')
   })
 
-  it('usa "en" come locale di default quando non specificato', async () => {
-    stubFetch(() => ok.binary(MOCK_PDF))
+  it('invia formLocale normalizzato nel body', async () => {
+    stubRender()
+    await client.renderPDF({ templateName: 'DELIBERA', payload: SAMPLE_PAYLOAD, locale: 'it' })
+    const body = JSON.parse(renderCall().arguments[1].body)
+    assert.equal(body.formLocale, 'it_IT')
+  })
+
+  it('usa "en_US" come formLocale di default quando non specificato', async () => {
+    stubRender()
     await client.renderPDF({ templateName: 'DELIBERA', payload: SAMPLE_PAYLOAD })
-    assert.equal(apiCalls()[0].arguments[1].headers['Accept-Language'], 'en')
+    const body = JSON.parse(renderCall().arguments[1].body)
+    assert.equal(body.formLocale, 'en_US')
   })
 
-  it('accetta il payload come oggetto JavaScript', async () => {
-    stubFetch(() => ok.binary(MOCK_PDF))
-    const result = await client.renderPDF({ templateName: 'DELIBERA', payload: SAMPLE_PAYLOAD })
+  it('include xdpTemplate e xmlData nel body', async () => {
+    stubRender()
+    await client.renderPDF({ templateName: 'DELIBERA', payload: SAMPLE_PAYLOAD })
+    const body = JSON.parse(renderCall().arguments[1].body)
+    assert.equal(body.xdpTemplate, 'mock-base64-xdp-content')
+    assert.ok(typeof body.xmlData === 'string' && body.xmlData.length > 0)
+  })
+
+  it('accetta il payload come oggetto JavaScript e lo converte in XML base64', async () => {
+    stubRender()
+    await client.renderPDF({ templateName: 'DELIBERA', payload: SAMPLE_PAYLOAD })
+    const body = JSON.parse(renderCall().arguments[1].body)
+    const xml = Buffer.from(body.xmlData, 'base64').toString('utf8')
+    assert.match(xml, /<FormData>/)
+    assert.match(xml, /<NumeroDelibera>12345<\/NumeroDelibera>/)
+  })
+
+  it('accetta il payload come stringa XML preformattata', async () => {
+    stubRender()
+    const xml = '<?xml version="1.0"?><FormData><Header><NumeroDelibera>TEST</NumeroDelibera></Header></FormData>'
+    const result = await client.renderPDF({ templateName: 'DELIBERA', payload: xml })
     assert.ok(Buffer.isBuffer(result))
+    const body = JSON.parse(renderCall().arguments[1].body)
+    assert.equal(Buffer.from(body.xmlData, 'base64').toString('utf8'), xml)
   })
 
-  it('accetta il payload come stringa JSON', async () => {
-    stubFetch(() => ok.binary(MOCK_PDF))
-    const result = await client.renderPDF({ templateName: 'DELIBERA', payload: JSON.stringify(SAMPLE_PAYLOAD) })
-    assert.ok(Buffer.isBuffer(result))
+  it('propaga ADOBE_FORMS_XDP_NOT_FOUND se il form non ha template', async () => {
+    stubFetch((url) =>
+      String(url).includes('/v1/forms/') ? ok.json({ formName: 'DELIBERA', templates: [] }) : ok.binary(MOCK_PDF)
+    )
+    await assert.rejects(
+      () => client.renderPDF({ templateName: 'DELIBERA', payload: SAMPLE_PAYLOAD }),
+      e => { assert.equal(e.code, 'ADOBE_FORMS_XDP_NOT_FOUND'); return true }
+    )
   })
 
-  it('propaga ADOBE_FORMS_API_FAILED in caso di errore HTTP', async () => {
-    stubFetch(() => err(400, 'Bad Request'))
+  it('propaga ADOBE_FORMS_API_FAILED in caso di errore HTTP sul render', async () => {
+    stubFetch((url) =>
+      String(url).includes('/v1/forms/') ? ok.json(MOCK_FORM_DETAILS) : err(400, 'Bad Request')
+    )
     await assert.rejects(
       () => client.renderPDF({ templateName: 'DELIBERA', payload: SAMPLE_PAYLOAD }),
       e => { assert.equal(e.code, 'ADOBE_FORMS_API_FAILED'); assert.equal(e.status, 400); return true }
+    )
+  })
+})
+
+// ─── getFormSchema ────────────────────────────────────────────────────────────
+
+const MOCK_XSD = `<?xml version="1.0" encoding="UTF-8"?><xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="FormData"/></xs:schema>`
+
+const MOCK_FORM_WITH_SCHEMA = {
+  formName: 'DELIBERA',
+  templates: [{ xdpTemplate: 'mock-base64-xdp-content' }],
+  schema: {
+    xsdSchema: Buffer.from(MOCK_XSD).toString('base64'),
+    schemaName: 'Schema',
+    metaData: { objectId: 'abc123' }
+  }
+}
+
+describe('getFormSchema', () => {
+  it('ritorna formName, schemaName, xsd decodificato e metaData', async () => {
+    stubFetch(() => ok.json(MOCK_FORM_WITH_SCHEMA))
+    const result = await client.getFormSchema('DELIBERA')
+    assert.equal(result.formName,   'DELIBERA')
+    assert.equal(result.schemaName, 'Schema')
+    assert.equal(result.xsd,        MOCK_XSD)
+    assert.deepEqual(result.metaData, { objectId: 'abc123' })
+  })
+
+  it('chiama GET /v1/forms/{formId}', async () => {
+    stubFetch(() => ok.json(MOCK_FORM_WITH_SCHEMA))
+    await client.getFormSchema('DELIBERA')
+    assert.equal(apiCalls()[0].arguments[0], 'https://mock-adobe.local/v1/forms/DELIBERA')
+  })
+
+  it('propaga ADOBE_FORMS_SCHEMA_NOT_FOUND se lo schema è assente', async () => {
+    stubFetch(() => ok.json({ formName: 'DELIBERA', templates: [] }))
+    await assert.rejects(
+      () => client.getFormSchema('DELIBERA'),
+      e => { assert.equal(e.code, 'ADOBE_FORMS_SCHEMA_NOT_FOUND'); return true }
+    )
+  })
+
+  it('propaga ADOBE_FORMS_API_FAILED quando il form non esiste', async () => {
+    stubFetch(() => err(404, 'Not Found'))
+    await assert.rejects(
+      () => client.getFormSchema('INESISTENTE'),
+      e => { assert.equal(e.code, 'ADOBE_FORMS_API_FAILED'); assert.equal(e.status, 404); return true }
     )
   })
 })

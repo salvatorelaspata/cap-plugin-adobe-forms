@@ -1,54 +1,47 @@
 # cap-plugin-adobe-forms
 
-Reusable SAP CAP Node.js plugin that wraps SAP Forms service by Adobe on SAP BTP.
-
-## What is included
-
-- Standard CAP plugin bootstrap through `cds-plugin.js`.
-- Unbound CAP actions for PDF rendering and health checks.
-- Remote health check against the Adobe endpoint.
-- Preferred integration via SAP BTP Destination service using SAP Cloud SDK.
-- Optional fallback to direct OAuth client-credentials configuration.
+Reusable SAP CAP Node.js plugin that wraps **SAP Forms service by Adobe** on SAP BTP.
 
 ## Installation
 
 ```bash
-npm install cap-plugin-adobe-forms
+npm install @salvatorela/cap-plugin-adobe-forms
 ```
 
-## Recommended configuration: Destination service
+## Configuration
 
-The preferred setup is a BTP HTTP destination with `OAuth2ClientCredentials`, because SAP Cloud SDK can resolve destinations by name and execute requests through the destination abstraction.[1][2]
+The plugin supports two authentication modes. Destination service is preferred for BTP deployments; direct credentials are useful for local development.
 
-Example consumer configuration:
+### Option 1 — BTP Destination (recommended)
+
+Configure an HTTP destination named `ADOBE_FORMS_API` with `OAuth2ClientCredentials` authentication in BTP Cockpit, then reference it in your CAP app:
 
 ```json
 {
   "cds": {
     "requires": {
       "adobeForms": {
-        "destination": "ADOBE_FORMS_API",
-        "healthPath": "/v1/forms"
+        "destination": "ADOBE_FORMS_API"
       }
     }
   }
 }
 ```
 
-Recommended destination values:
+Recommended destination settings:
 
-- Name: `ADOBE_FORMS_API`
-- Type: `HTTP`
-- Proxy Type: `Internet`
-- Authentication: `OAuth2ClientCredentials`
-- URL: Adobe REST API base URL from the Adobe service key
-- Client ID: `clientid`
-- Client Secret: `clientsecret`
-- Token Service URL: XSUAA URL + `/oauth/token`
+| Field | Value |
+|---|---|
+| Name | `ADOBE_FORMS_API` |
+| Type | `HTTP` |
+| Proxy Type | `Internet` |
+| Authentication | `OAuth2ClientCredentials` |
+| URL | Adobe REST API base URL from the service key |
+| Client ID | `uaa.clientid` from the service key |
+| Client Secret | `uaa.clientsecret` from the service key |
+| Token Service URL | `uaa.url` + `/oauth/token` |
 
-## Direct credential fallback
-
-If Destination service is not available, the plugin can fall back to direct credentials:
+### Option 2 — Direct credentials (local development)
 
 ```json
 {
@@ -56,10 +49,10 @@ If Destination service is not available, the plugin can fall back to direct cred
     "requires": {
       "adobeForms": {
         "credentials": {
-          "baseUrl": "https://<adsrestapi-host>",
-          "tokenUrl": "https://<xsuaa-host>/oauth/token",
-          "clientId": "<clientid>",
-          "clientSecret": "<clientsecret>"
+          "baseUrl":      "https://<adsrestapi-host>",
+          "tokenUrl":     "https://<xsuaa-host>/oauth/token",
+          "clientId":     "<uaa.clientid>",
+          "clientSecret": "<uaa.clientsecret>"
         }
       }
     }
@@ -67,42 +60,175 @@ If Destination service is not available, the plugin can fall back to direct cred
 }
 ```
 
-## Exposed CAP actions
+> For local development with a `.env` file see [TEST.md](TEST.md).
+
+---
+
+## CAP service
+
+The plugin registers the service at path `/adobe/forms`.
 
 ```cds
+@path: '/adobe/forms'
 service AdobeFormsService {
-  action renderPDF(templateName : String, payload : LargeString, locale : String) returns LargeBinary;
-  action health() returns HealthStatus;
+
+  @Core.MediaType: 'application/pdf'
+  action renderPDF(
+    templateName : String(255),
+    payload      : LargeString,
+    locale       : String(10)
+  ) returns LargeBinary;
+
+  action listForms()                          returns LargeString;
+  action getFormDetails(formId : String(255)) returns LargeString;
+  action getFormSchema(formId  : String(255)) returns LargeString;
+
+  action health()       returns HealthStatus;
   action remoteHealth() returns RemoteHealthStatus;
 }
 ```
 
-- `health()` checks local plugin health.
-- `remoteHealth()` resolves the destination and performs a real outbound call against the configured Adobe endpoint.
+---
 
-## Health check behavior
+## API reference
 
-The remote health check is intentionally lightweight and is meant to validate real connectivity, destination resolution, and authentication to the Adobe endpoint, which aligns with dependency-aware health check practices.[3]
+### `renderPDF({ templateName, payload, locale })`
 
-## SAP Cloud SDK note
+Renders a PDF for the given form template.
 
-SAP Cloud SDK supports fetching destinations by name using functions such as `getDestination(...)`, and it can execute outbound HTTP requests against a resolved destination abstraction.[1][2]
+Internally the plugin:
+1. Fetches the form details to retrieve the XDP template (`GET /v1/forms/{templateName}`)
+2. Converts `payload` to XML and base64-encodes it
+3. Calls `POST /v1/adsRender/pdf` and returns the decoded PDF as a `Buffer`
 
-## Best practices applied
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `templateName` | `string` | yes | Form name as returned by `listForms` |
+| `payload` | `object \| string` | yes | Data to fill the form. JS objects are serialized to XML automatically. Strings are sent as-is (must be valid XML). |
+| `locale` | `string` | no | Locale in `ll`, `ll-LL` or `ll_LL` format (e.g. `it`, `it-IT`). Defaults to `en_US`. |
 
-- Destination service first, direct credentials only as fallback.
-- Technical wrapper via unbound actions instead of raw proxying.
-- Separation of config, destination resolution, OAuth, HTTP client, handlers, and error translation.
-- Remote dependency health check separated from local CAP health.
-- Token caching only for direct credential mode.
-- Minimal package surface and explicit environment-driven configuration.
+**Payload structure** — JS objects are converted to XML with the root element `FormData`:
 
-## Important note
+```js
+// Input
+{
+  Header: { NumeroDelibera: 'TEST-001', Anno: 2026, Data: '2026-04-23' },
+  TabellaStringhe: { Riga: [{ Testo: 'Prima riga' }, { Testo: 'Seconda riga' }] }
+}
 
-The exact Adobe REST endpoint paths can vary by service flavor or tenant setup, so validate `render` and `healthPath` values in your target landscape before productive use.
+// Serialized XML sent to the API
+<?xml version="1.0" encoding="UTF-8"?>
+<FormData>
+  <Header>
+    <NumeroDelibera>TEST-001</NumeroDelibera>
+    <Anno>2026</Anno>
+    <Data>2026-04-23</Data>
+  </Header>
+  <TabellaStringhe>
+    <Riga><Testo>Prima riga</Testo></Riga>
+    <Riga><Testo>Seconda riga</Testo></Riga>
+  </TabellaStringhe>
+</FormData>
+```
 
-## Sources
+**Returns:** `Buffer` (PDF binary)
 
-[1] SAP Cloud SDK documentation explains destination retrieval by name and the search/resolution behavior.
-[2] SAP Community and SAP Cloud SDK references show destination-based outbound calls and destination resolution patterns in Node.js.
-[3] CAP health-check guidance and general health-check best practices recommend lightweight checks and separate dependency verification.
+---
+
+### `listForms()`
+
+Returns all form templates available in the Adobe Forms tenant.
+
+`GET /v1/forms`
+
+**Returns:** array of form objects, each with `formName`, `metaData`, `schema`, and `templates`.
+
+---
+
+### `getFormDetails(formId)`
+
+Returns full details for a specific form, including the XSD schema and XDP templates.
+
+`GET /v1/forms/{formId}`
+
+| Parameter | Type | Description |
+|---|---|---|
+| `formId` | `string` | Form name (URL-encoded automatically) |
+
+**Returns:** form object with `formName`, `schema`, `templates`, `metaData`.
+
+---
+
+### `getFormSchema(formId)`
+
+Returns the XSD schema of a form decoded as a plain string.
+
+Internally calls `getFormDetails` and decodes `schema.xsdSchema` from base64.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `formId` | `string` | Form name |
+
+**Returns:**
+
+```js
+{
+  formName:   'DELIBERA',
+  schemaName: 'Schema',
+  xsd:        '<?xml version="1.0"...>',  // decoded XSD
+  metaData:   { objectId, versionNumber, creationDate, ... }
+}
+```
+
+---
+
+### `health()`
+
+Returns local plugin health without making any outbound call.
+
+**Returns:** `{ status: 'UP', service: 'SAP Forms service by Adobe' }`
+
+---
+
+### `remoteHealth()`
+
+Resolves the destination (or direct credentials) and performs a real call to the configured `healthPath` (default: `GET /v1/forms`) to verify end-to-end connectivity.
+
+**Returns:**
+
+```js
+{
+  status:          'UP' | 'DOWN',
+  service:         'SAP Forms service by Adobe',
+  destinationName: 'ADOBE_FORMS_API',
+  endpoint:        '/v1/forms',
+  reachable:       true | false,
+  authenticated:   true | false,
+  details:         '...'
+}
+```
+
+---
+
+## Error codes
+
+| Code | Thrown by | Description |
+|---|---|---|
+| `ADOBE_FORMS_API_FAILED` | all API calls | HTTP error from the Adobe REST API (includes `status`) |
+| `ADOBE_FORMS_CONFIG_MISSING` | startup | Required credential fields are missing |
+| `ADOBE_FORMS_XDP_NOT_FOUND` | `renderPDF` | The form has no XDP template in `templates[0]` |
+| `ADOBE_FORMS_SCHEMA_NOT_FOUND` | `getFormSchema` | The form has no `schema.xsdSchema` field |
+
+---
+
+## Testing
+
+See [TEST.md](TEST.md) for instructions on running unit tests and integration tests against a real BTP instance.
+
+```bash
+# Unit tests (no credentials needed)
+npm test
+
+# Integration test against real BTP service
+node --env-file=.env test/integration.js
+```
