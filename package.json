@@ -5,7 +5,6 @@
   "main": "cds-plugin.js",
   "files": [
     "cds-plugin.js",
-    "srv",
     "lib",
     "README.md",
     "LICENSE",
@@ -45,9 +44,6 @@
   },
   "cds": {
     "requires": {
-      "AdobeFormsService": {
-        "impl": "cap-plugin-adobe-forms/lib/adobe-service.js"
-      },
       "adobeForms": {
         "kind": "rest",
         "destination": "ADOBE_FORMS_API",
