@@ -30,16 +30,16 @@ Configure an HTTP destination named `ADOBE_FORMS_API` with `OAuth2ClientCredenti
 
 Recommended destination settings:
 
-| Field | Value |
-|---|---|
-| Name | `ADOBE_FORMS_API` |
-| Type | `HTTP` |
-| Proxy Type | `Internet` |
-| Authentication | `OAuth2ClientCredentials` |
-| URL | Adobe REST API base URL from the service key |
-| Client ID | `uaa.clientid` from the service key |
-| Client Secret | `uaa.clientsecret` from the service key |
-| Token Service URL | `uaa.url` + `/oauth/token` |
+| Field             | Value                                        |
+| ----------------- | -------------------------------------------- |
+| Name              | `ADOBE_FORMS_API`                            |
+| Type              | `HTTP`                                       |
+| Proxy Type        | `Internet`                                   |
+| Authentication    | `OAuth2ClientCredentials`                    |
+| URL               | Adobe REST API base URL from the service key |
+| Client ID         | `uaa.clientid` from the service key          |
+| Client Secret     | `uaa.clientsecret` from the service key      |
+| Token Service URL | `uaa.url` + `/oauth/token`                   |
 
 ### Option 2 — Direct credentials (local development)
 
@@ -49,9 +49,9 @@ Recommended destination settings:
     "requires": {
       "adobeForms": {
         "credentials": {
-          "baseUrl":      "https://<adsrestapi-host>",
-          "tokenUrl":     "https://<xsuaa-host>/oauth/token",
-          "clientId":     "<uaa.clientid>",
+          "baseUrl": "https://<adsrestapi-host>",
+          "tokenUrl": "https://<xsuaa-host>/oauth/token",
+          "clientId": "<uaa.clientid>",
           "clientSecret": "<uaa.clientsecret>"
         }
       }
@@ -92,20 +92,22 @@ service AdobeFormsService {
 
 ## API reference
 
-### `renderPDF({ templateName, payload, locale })`
+### `renderPDF({ templateName, payload, locale, options })`
 
 Renders a PDF for the given form template.
 
 Internally the plugin:
+
 1. Fetches the form details to retrieve the XDP template (`GET /v1/forms/{templateName}`)
 2. Converts `payload` to XML and base64-encodes it
 3. Calls `POST /v1/adsRender/pdf` and returns the decoded PDF as a `Buffer`
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `templateName` | `string` | yes | Form name as returned by `listForms` |
-| `payload` | `object \| string` | yes | Data to fill the form. JS objects are serialized to XML automatically. Strings are sent as-is (must be valid XML). |
-| `locale` | `string` | no | Locale in `ll`, `ll-LL` or `ll_LL` format (e.g. `it`, `it-IT`). Defaults to `en_US`. |
+| Parameter        | Type               | Required | Description                                                                                                        |
+| ---------------- | ------------------ | -------- | ------------------------------------------------------------------------------------------------------------------ |
+| `templateName`   | `string`           | yes      | Form name as returned by `listForms`                                                                               |
+| `payload`        | `object \| string` | yes      | Data to fill the form. JS objects are serialized to XML automatically. Strings are sent as-is (must be valid XML). |
+| `locale`         | `string`           | no       | Locale in `ll`, `ll-LL` or `ll_LL` format (e.g. `it`, `it-IT`). Defaults to `en_US`.                               |
+| `options.base64` | `boolean`          | no       | If `true`, returns the PDF as a base64 string instead of a `Buffer`. Defaults to `false`.                          |
 
 **Payload structure** — JS objects are converted to XML with the root element `FormData`:
 
@@ -151,9 +153,9 @@ Returns full details for a specific form, including the XSD schema and XDP templ
 
 `GET /v1/forms/{formId}`
 
-| Parameter | Type | Description |
-|---|---|---|
-| `formId` | `string` | Form name (URL-encoded automatically) |
+| Parameter | Type     | Description                           |
+| --------- | -------- | ------------------------------------- |
+| `formId`  | `string` | Form name (URL-encoded automatically) |
 
 **Returns:** form object with `formName`, `schema`, `templates`, `metaData`.
 
@@ -165,9 +167,9 @@ Returns the XSD schema of a form decoded as a plain string.
 
 Internally calls `getFormDetails` and decodes `schema.xsdSchema` from base64.
 
-| Parameter | Type | Description |
-|---|---|---|
-| `formId` | `string` | Form name |
+| Parameter | Type     | Description |
+| --------- | -------- | ----------- |
+| `formId`  | `string` | Form name   |
 
 **Returns:**
 
@@ -212,12 +214,12 @@ Resolves the destination (or direct credentials) and performs a real call to the
 
 ## Error codes
 
-| Code | Thrown by | Description |
-|---|---|---|
-| `ADOBE_FORMS_API_FAILED` | all API calls | HTTP error from the Adobe REST API (includes `status`) |
-| `ADOBE_FORMS_CONFIG_MISSING` | startup | Required credential fields are missing |
-| `ADOBE_FORMS_XDP_NOT_FOUND` | `renderPDF` | The form has no XDP template in `templates[0]` |
-| `ADOBE_FORMS_SCHEMA_NOT_FOUND` | `getFormSchema` | The form has no `schema.xsdSchema` field |
+| Code                           | Thrown by       | Description                                            |
+| ------------------------------ | --------------- | ------------------------------------------------------ |
+| `ADOBE_FORMS_API_FAILED`       | all API calls   | HTTP error from the Adobe REST API (includes `status`) |
+| `ADOBE_FORMS_CONFIG_MISSING`   | startup         | Required credential fields are missing                 |
+| `ADOBE_FORMS_XDP_NOT_FOUND`    | `renderPDF`     | The form has no XDP template in `templates[0]`         |
+| `ADOBE_FORMS_SCHEMA_NOT_FOUND` | `getFormSchema` | The form has no `schema.xsdSchema` field               |
 
 ---
 
