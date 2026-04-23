@@ -15,8 +15,9 @@ type RemoteHealthStatus {
   details         : String;
 }
 
-@path:'/adobe/forms'
+@path: '/adobe/forms'
 service AdobeFormsService {
+
   @Core.MediaType: 'application/pdf'
   action renderPDF(
     templateName : String(255),
@@ -24,6 +25,9 @@ service AdobeFormsService {
     locale       : String(10)
   ) returns LargeBinary;
 
-  action health() returns HealthStatus;
+  action listForms()                          returns LargeString;
+  action getFormDetails(formId : String(255)) returns LargeString;
+
+  action health()       returns HealthStatus;
   action remoteHealth() returns RemoteHealthStatus;
 }

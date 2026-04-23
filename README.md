@@ -2,11 +2,10 @@
 
 Reusable SAP CAP Node.js plugin that wraps SAP Forms service by Adobe on SAP BTP.
 
-## Features
+## What is included
 
 - Standard CAP plugin bootstrap through `cds-plugin.js`.
 - Unbound CAP actions for PDF rendering and health checks.
-- Shared CDS types exported at namespace level for reuse by consumer apps.
 - Remote health check against the Adobe endpoint.
 - Preferred integration via SAP BTP Destination service using SAP Cloud SDK.
 - Optional fallback to direct OAuth client-credentials configuration.
@@ -14,10 +13,14 @@ Reusable SAP CAP Node.js plugin that wraps SAP Forms service by Adobe on SAP BTP
 ## Installation
 
 ```bash
-npm install @salvatorela/cap-plugin-adobe-forms
+npm install cap-plugin-adobe-forms
 ```
 
 ## Recommended configuration: Destination service
+
+The preferred setup is a BTP HTTP destination with `OAuth2ClientCredentials`, because SAP Cloud SDK can resolve destinations by name and execute requests through the destination abstraction.[1][2]
+
+Example consumer configuration:
 
 ```json
 {
@@ -43,37 +46,30 @@ Recommended destination values:
 - Client Secret: `clientsecret`
 - Token Service URL: XSUAA URL + `/oauth/token`
 
-## CDS contract
+## Direct credential fallback
 
-```cds
-using { plugins.adobe as adobe } from 'cap-plugin-adobe-forms/srv/adobe-forms-service';
+If Destination service is not available, the plugin can fall back to direct credentials:
 
-service DocumentService {
-  action pluginHealth() returns adobe.HealthStatus;
-  action pluginRemoteHealth() returns adobe.RemoteHealthStatus;
+```json
+{
+  "cds": {
+    "requires": {
+      "adobeForms": {
+        "credentials": {
+          "baseUrl": "https://<adsrestapi-host>",
+          "tokenUrl": "https://<xsuaa-host>/oauth/token",
+          "clientId": "<clientid>",
+          "clientSecret": "<clientsecret>"
+        }
+      }
+    }
+  }
 }
 ```
 
 ## Exposed CAP actions
 
 ```cds
-namespace plugins.adobe;
-
-type HealthStatus {
-  status  : String;
-  service : String;
-}
-
-type RemoteHealthStatus {
-  status          : String;
-  service         : String;
-  destinationName : String;
-  endpoint        : String;
-  authenticated   : Boolean;
-  reachable       : Boolean;
-  details         : String;
-}
-
 service AdobeFormsService {
   action renderPDF(templateName : String, payload : LargeString, locale : String) returns LargeBinary;
   action health() returns HealthStatus;
@@ -81,17 +77,32 @@ service AdobeFormsService {
 }
 ```
 
-## Publish checklist
+- `health()` checks local plugin health.
+- `remoteHealth()` resolves the destination and performs a real outbound call against the configured Adobe endpoint.
 
-- Run `npm pack --dry-run` to inspect exactly what will be published.
-- Verify the package name or replace it with your npm scope.
-- Replace `repository`, `homepage`, and `bugs` URLs with your real repository.
-- Publish from the plugin folder only, not from a mono-bundle root.
+## Health check behavior
+
+The remote health check is intentionally lightweight and is meant to validate real connectivity, destination resolution, and authentication to the Adobe endpoint, which aligns with dependency-aware health check practices.[3]
+
+## SAP Cloud SDK note
+
+SAP Cloud SDK supports fetching destinations by name using functions such as `getDestination(...)`, and it can execute outbound HTTP requests against a resolved destination abstraction.[1][2]
+
+## Best practices applied
+
+- Destination service first, direct credentials only as fallback.
+- Technical wrapper via unbound actions instead of raw proxying.
+- Separation of config, destination resolution, OAuth, HTTP client, handlers, and error translation.
+- Remote dependency health check separated from local CAP health.
+- Token caching only for direct credential mode.
+- Minimal package surface and explicit environment-driven configuration.
 
 ## Important note
 
-Validate the exact Adobe REST endpoint paths in your tenant before productive use.
+The exact Adobe REST endpoint paths can vary by service flavor or tenant setup, so validate `render` and `healthPath` values in your target landscape before productive use.
 
-## Scoped package note
+## Sources
 
-This variant is prepared for a public user-scoped npm package. The first publish of a scoped public package must use public access.
+[1] SAP Cloud SDK documentation explains destination retrieval by name and the search/resolution behavior.
+[2] SAP Community and SAP Cloud SDK references show destination-based outbound calls and destination resolution patterns in Node.js.
+[3] CAP health-check guidance and general health-check best practices recommend lightweight checks and separate dependency verification.
