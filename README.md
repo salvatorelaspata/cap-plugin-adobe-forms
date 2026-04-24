@@ -64,6 +64,89 @@ Recommended destination settings:
 
 ---
 
+## Usage
+
+### Programmatic API (CAP service handler)
+
+Connect to the service with `cds.connect.to` and call methods directly:
+
+```js
+const cds = require('@sap/cds')
+
+module.exports = cds.service.impl(async function () {
+  const adobeForms = await cds.connect.to('adobeForms')
+
+  this.on('generateReport', async (req) => {
+    // Render a PDF and return it as a Buffer
+    const pdf = await adobeForms.renderPDF({
+      templateName: 'MY_FORM',
+      payload: {
+        Header: { Title: 'Annual Report', Year: 2026 },
+        Items: { Row: [{ Label: 'Revenue', Value: '1000' }] }
+      },
+      locale: 'it-IT'
+    })
+    return pdf // Buffer
+  })
+
+  this.on('listAvailableForms', async () => {
+    return adobeForms.listForms()
+  })
+
+  this.on('getSchema', async (req) => {
+    const { formId } = req.data
+    return adobeForms.getFormSchema(formId)
+  })
+})
+```
+
+### Render PDF as base64
+
+Pass `options.base64: true` to get a base64 string instead of a `Buffer` (useful for JSON responses or email attachments):
+
+```js
+const b64 = await adobeForms.renderPDF({
+  templateName: 'MY_FORM',
+  payload: { ... },
+  options: { base64: true }
+})
+// b64 is a base64-encoded string
+```
+
+### Raw XML payload
+
+If your data is already valid XML, pass it as a string — no conversion is applied:
+
+```js
+const pdf = await adobeForms.renderPDF({
+  templateName: 'MY_FORM',
+  payload: '<?xml version="1.0" encoding="UTF-8"?><FormData><Title>Hello</Title></FormData>'
+})
+```
+
+### HTTP / OData (REST endpoint)
+
+The plugin also exposes a CAP OData service at `/adobe/forms`. Call it directly via HTTP:
+
+```bash
+# List all forms
+curl -X POST https://<app>/adobe/forms/listForms
+
+# Render a PDF
+curl -X POST https://<app>/adobe/forms/renderPDF \
+  -H 'Content-Type: application/json' \
+  -d '{"templateName":"MY_FORM","payload":"{\"Header\":{\"Title\":\"Test\"}}","locale":"it-IT"}' \
+  --output report.pdf
+
+# Health checks
+curl -X POST https://<app>/adobe/forms/health
+curl -X POST https://<app>/adobe/forms/remoteHealth
+```
+
+> **Note:** `options.base64` is only available via the programmatic API. The OData action always returns binary (`application/pdf`).
+
+---
+
 ## CAP service
 
 The plugin registers the service at path `/adobe/forms`.
@@ -98,16 +181,17 @@ Renders a PDF for the given form template.
 
 Internally the plugin:
 
-1. Fetches the form details to retrieve the XDP template (`GET /v1/forms/{templateName}`)
-2. Converts `payload` to XML and base64-encodes it
-3. Calls `POST /v1/adsRender/pdf` and returns the decoded PDF as a `Buffer`
+1. Fetches the form details (`GET /v1/forms/{templateName}`) to retrieve the available XDP templates
+2. Selects the template whose `language` matches the `locale` language code; falls back to the first template if no match is found
+3. Converts `payload` to XML and base64-encodes it
+4. Calls `POST /v1/adsRender/pdf` with `xdpTemplate` and `templateName` (from the selected template), then returns the decoded PDF as a `Buffer`
 
-| Parameter        | Type               | Required | Description                                                                                                        |
-| ---------------- | ------------------ | -------- | ------------------------------------------------------------------------------------------------------------------ |
-| `templateName`   | `string`           | yes      | Form name as returned by `listForms`                                                                               |
-| `payload`        | `object \| string` | yes      | Data to fill the form. JS objects are serialized to XML automatically. Strings are sent as-is (must be valid XML). |
-| `locale`         | `string`           | no       | Locale in `ll`, `ll-LL` or `ll_LL` format (e.g. `it`, `it-IT`). Defaults to `en_US`.                               |
-| `options.base64` | `boolean`          | no       | If `true`, returns the PDF as a base64 string instead of a `Buffer`. Defaults to `false`.                          |
+| Parameter        | Type               | Required | Description                                                                                                                              |
+| ---------------- | ------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `templateName`   | `string`           | yes      | Form name as returned by `listForms`                                                                                                     |
+| `payload`        | `object \| string` | yes      | Data to fill the form. JS objects are serialized to XML automatically. Strings are sent as-is (must be valid XML).                       |
+| `locale`         | `string`           | no       | Locale in `ll`, `ll-LL` or `ll_LL` format (e.g. `it`, `it-IT`). Defaults to `en_US`. Used to select the matching language template variant. |
+| `options.base64` | `boolean`          | no       | If `true`, returns the PDF as a base64 string instead of a `Buffer`. Defaults to `false`.                                                |
 
 **Payload structure** — JS objects are converted to XML with the root element `FormData`:
 
@@ -214,12 +298,14 @@ Resolves the destination (or direct credentials) and performs a real call to the
 
 ## Error codes
 
-| Code                           | Thrown by       | Description                                            |
-| ------------------------------ | --------------- | ------------------------------------------------------ |
-| `ADOBE_FORMS_API_FAILED`       | all API calls   | HTTP error from the Adobe REST API (includes `status`) |
-| `ADOBE_FORMS_CONFIG_MISSING`   | startup         | Required credential fields are missing                 |
-| `ADOBE_FORMS_XDP_NOT_FOUND`    | `renderPDF`     | The form has no XDP template in `templates[0]`         |
-| `ADOBE_FORMS_SCHEMA_NOT_FOUND` | `getFormSchema` | The form has no `schema.xsdSchema` field               |
+| Code                                | Thrown by           | Description                                            |
+| ----------------------------------- | ------------------- | ------------------------------------------------------ |
+| `ADOBE_FORMS_API_FAILED`            | all API calls       | HTTP error from the Adobe REST API (includes `status`) |
+| `ADOBE_FORMS_CONFIG_MISSING`        | startup             | Required credential fields are missing                 |
+| `ADOBE_FORMS_XDP_NOT_FOUND`         | `renderPDF`         | No XDP template found for the form (or the selected language variant) |
+| `ADOBE_FORMS_SCHEMA_NOT_FOUND`      | `getFormSchema`     | The form has no `schema.xsdSchema` field               |
+| `ADOBE_FORMS_DESTINATION_NOT_FOUND` | all API calls       | BTP destination resolved to `null` (destination mode) |
+| `ADOBE_FORMS_OAUTH_FAILED`          | all API calls       | OAuth token endpoint returned an error (direct mode)  |
 
 ---
 
